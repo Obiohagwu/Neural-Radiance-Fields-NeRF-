@@ -11,7 +11,7 @@ Generally speaking, we synthesize views, by querying 5D coordinates along camera
 
 ### ARCHITECTURE
 ---
-From pg
+
 
 
 
@@ -23,3 +23,11 @@ From pg
 
 We see that NeRFs achieve SOTA on multiple 3D volumetric benchmarks, beating tradinitonal convolutional based methods and other view synthesis methods.
 
+
+### USEFUL RESOURCES
+---
+
+> Xie, Takikawa.,et al "Neural Radiance Fields in visual computing and beyond"
+> Volume 41(2022), Nummber 2
+> STAR - state of the art report
+> https://arxiv.org/pdf/2111.11426.pdf
