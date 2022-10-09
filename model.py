@@ -1,7 +1,7 @@
 import numpy as np 
 import torch 
 
-
+# ((x,y,z), theta, phi) ---> ((r,g,b), sigma(density))
 
 class NeRF(torch.nn.Module):
     def __init__(
@@ -26,8 +26,8 @@ class NeRF(torch.nn.Module):
             self.use_viewdirs = use_viewdirs
             self.layers_xyz.append(torch.nn.Linear(self.dim_xyz+256, 256))
             #iterate through layers
-            for i in range(1,8):
-                if i == 4:
+            for i in range(1,8): # traverse through 8 layers
+                if i == 4: # if idx = 4
                     self.layers_xyz.append(torch.nn.Linear(self.dim_xyz+256, 256))
                 else:
                     self.layers_xyz.append(torch.nn.Linear(256,256))
