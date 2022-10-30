@@ -57,30 +57,82 @@ class NeRF(nn.Module):
         
         return self.network(x)
 
-    def get_rays(self, H, W, focal, c2w):
-        i, j = torch.meshgrid(torch.arange(H), torch.arange(W))
-        i = i.float()
-        j = j.float()
-        dirs = torch.stack([(i - H * 0.5) / focal, -(j - W * 0.5) / focal, -torch.ones_like(i)], -1)
-        rays_d = dirs.view(H * W, 3)
-        rays_o = torch.zeros_like(rays_d)
-        rays_d = normalize_rays(rays_d, c2w)
-        rays_o = normalize_rays(rays_o, c2w)
-        return rays_o, rays_d
+def render_path(model, imgs, poses, bds, focal, N_samples, N_importance, chunk, perturb, N_rand, network_fov, use_viewdirs, use_disp, use_noise, use_ndc):
+    # Get batch size
+    batch_size = poses.shape[0]
+    
+    # Get image size
+    H = imgs.shape[2]
+    W = imgs.shape[3]
+    
+    # Get focal length
+    focal = focal[:, 0, 0]
+    
+    # Get ray directions
+    rays_o, rays_d = get_rays(H, W, focal, poses, network_fov, use_ndc)
+    
+    # Get ray batch indices
+    rays_o = rays_o.repeat(batch_size, 1, 1)
+    rays_d = rays_d.repeat(batch_size, 1, 1)
+    rays_b = torch.arange(batch_size, dtype=torch.long).view(-1, 1, 1).repeat(1, H, W).view(-1)
+    
+    # Get ray origins and directions
+    rays_o = rays_o.view(-1, 3)
+    rays_d = rays_d.view(-1, 3)
+    
+    # Get ray bounds
+    near, far = get_bounds(bds, poses, rays_o, rays_d, use_ndc)
+    
+    # Sample along ray
+    z_vals = torch.linspace(0.0, 1.0, N_samples, device=imgs.device)
+    z_vals = near[..., None] * (1.0 - z_vals) + far[..., None] * z_vals
+    z_vals = z_vals.view(batch_size, -1)
+    
+    # Get ray directions
+    if use_viewdirs:
+        viewdirs = rays_d.view(batch_size, H, W, 3)
+        viewdirs = viewdirs[:, None, None, :, :].repeat(1, N_samples, N_importance, 1, 1).view(batch_size, -1, 3)
+    else:
+        viewdirs = None
+    
+    # Render
+    rgb, disp, acc, extras = render(model, rays_o, rays_d, z_vals, rays_b, chunk, perturb, N_rand, use_viewdirs, use_disp, viewdirs)
+    
+    # Reshape
+    rgb = rgb.view(batch_size, H, W, 3)
+    disp = disp.view(batch_size, H, W)
+    acc = acc.view(batch_size, H, W)
+    extras = extras.view(batch_size, H, W)
+    
+    return rgb, disp, acc, extras
 
-    def render_rays(self, rays_o, rays_d, near, far, N_samples, rand=True, retraw=False, white_bkgd=False):
-        batch_size = rays_o.shape[0]
-        z_vals = torch.linspace(near, far, N_samples)
-        z_vals = z_vals.view(1, 1, N_samples).repeat(batch_size, 1, 1)
+def render(model, rays_o, rays_d, z_vals, rays_b, chunk, perturb, N_rand, use_viewdirs, use_disp, viewdirs):
+    # Get batch size
+    batch_size = rays_o.shape[0]
+    
+    # Get number of rays
+    N_rays = rays_o.shape[0]
+    
+    # Get number of samples
+    N_samples = z_vals.shape[1]
+    
+    # Get number of chunks
+    N_chunks = max(N_rays // chunk, 1)
+    
+    # Initialize rgb, disp, acc, extras
+    rgb = torch.zeros(N_rays, 3, device=rays_o.device)
+    disp = torch.zeros(N_rays, device=rays_o.device)
+    acc = torch.zeros(N_rays, device=rays_o.device)
+    extras = torch.zeros(N_rays, device=rays_o.device)
+    
+    # Render
+    for i in range(N_chunks):
+        # Get chunk indices
+        chunk_idx = torch.arange(i * chunk, min((i + 1) * chunk, N_rays), device=rays_o.device)
         
-        if rand:
-            z_vals = z_vals + torch.rand_like(z_vals) * (z_vals[:, 1:] - z_vals[:, :-1])
-        
-        z_vals = z_vals.view(batch_size, -1)
-        rays_o = rays_o[:, None, :].repeat(1, N_samples, 1)
-        rays_d = rays_d[:, None, :].repeat(1, N_samples, 1)
-        rays_o = rays_o.view(batch_size, -1, 3)
-        rays_d = rays_d.view(batch_size, -1, 3)
+        # Get chunk rays
+        chunk_rays_o = rays_o[chunk_idx]
+
 
 
 
